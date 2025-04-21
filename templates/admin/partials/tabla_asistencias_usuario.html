@@ -1,0 +1,36 @@
+<div class="d-flex justify-content-end gap-2 mb-3">
+    <a href="/admin/api/asistencias-usuario/exportar?usuario_id={{ usuario.id }}&mes={{ mes }}" class="btn btn-outline-success btn-sm" target="_blank">📥 Excel</a>
+    <a href="/admin/api/asistencias-usuario/exportar-pdf?usuario_id={{ usuario.id }}&mes={{ mes }}" class="btn btn-outline-danger btn-sm" target="_blank">📄 PDF</a>
+</div>
+<div class="table-responsive">
+    <table class="table table-bordered table-striped align-middle text-center">
+        <thead class="table-light">
+            <tr>
+                <th>Fecha</th>
+                <th>Entrada</th>
+                <th>Salida</th>
+                <th>IP</th>
+                <th>Observaciones</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in asistencias %}
+            <tr>
+                <td>{{ a.fecha }}</td>
+                <td>{{ a.hora_entrada.strftime('%H:%M') if a.hora_entrada else '-' }}</td>
+                <td>{{ a.hora_salida.strftime('%H:%M') if a.hora_salida else '-' }}</td>
+                <td>{{ a.ip or '-' }}</td>
+                <td>{{ a.observaciones or '-' }}</td>
+                <td>
+                    {% if current_user.rol.nombre == 'admin' %}
+                    <a href="{{ url_for('admin.editar_asistencia', asistencia_id=a.id) }}" class="btn btn-sm btn-outline-primary">✏️ Editar</a>
+                    {% else %}
+                    <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Administrar IPs Autorizadas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="container py-4">
+    <h2 class="mb-4">🔐 Gestión de IPs Autorizadas</h2>
+
+    <!-- Mensajes Flash -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Formulario para agregar nueva IP -->
+    <form method="POST" action="{{ url_for('admin.agregar_ip') }}" class="row g-3 mb-4">
+        <div class="col-md-4">
+            <input type="text" name="ip" class="form-control" placeholder="Dirección IP" required>
+        </div>
+        <div class="col-md-6">
+            <input type="text" name="descripcion" class="form-control" placeholder="Descripción (opcional)">
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-success w-100">➕ Agregar IP</button>
+        </div>
+    </form>
+
+    <!-- Tabla de IPs -->
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>#</th>
+                    <th>Dirección IP</th>
+                    <th>Descripción</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ip in ips %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ ip.ip }}</td>
+                    <td>{{ ip.descripcion or '-' }}</td>
+                    <td>
+                        {% if ip.activa %}
+                            <span class="badge bg-success">Activa</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactiva</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('admin.cambiar_estado_ip', ip_id=ip.id) }}" class="btn btn-sm btn-outline-primary">
+                            {% if ip.activa %}❌ Desactivar{% else %}✅ Activar{% endif %}
+                        </a>
+                        <a href="{{ url_for('admin.eliminar_ip', ip_id=ip.id) }}" class="btn btn-sm btn-outline-danger"
+                           onclick="return confirm('¿Eliminar esta IP?');">🗑️ Eliminar</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+{% endblock %}

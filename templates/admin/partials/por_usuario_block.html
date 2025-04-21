@@ -1,0 +1,31 @@
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        👤 Consultar asistencias por usuario
+    </div>
+    <div class="card-body">
+
+        <!-- Selector de usuario y mes -->
+        <div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <label for="usuario-select" class="form-label mb-1">Selecciona un usuario</label>
+                <select id="usuario-select" class="form-select">
+                    <option value="">-- Elegir --</option>
+                    {% for u in usuarios %}
+                    <option value="{{ u.id }}">{{ u.nombres }} {{ u.apellidos }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label for="mes-select" class="form-label mb-1">Mes</label>
+                <input type="month" id="mes-select" class="form-control" value="{{ current_month }}">
+
+            </div>
+        </div>
+
+        <!-- Contenedor para la tabla de asistencias -->
+        <div id="tabla-asistencias-usuario" class="mt-3">
+            <div class="text-muted text-center">Seleccione un usuario para ver sus asistencias.</div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Editar Asistencia{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h3>✏️ Editar Asistencia</h3>
+
+    <form method="POST">
+        <div class="mb-3">
+            <label>Fecha</label>
+            <input type="text" class="form-control" value="{{ asistencia.fecha }}" disabled>
+        </div>
+
+        <div class="mb-3">
+            <label for="hora_entrada">Hora de Entrada</label>
+            <input type="time" name="hora_entrada" id="hora_entrada" class="form-control" value="{{ asistencia.hora_entrada }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="hora_salida">Hora de Salida</label>
+            <input type="time" name="hora_salida" id="hora_salida" class="form-control" value="{{ asistencia.hora_salida }}">
+        </div>
+
+        <div class="mb-3">
+            <label for="observaciones">Observaciones</label>
+            <textarea name="observaciones" id="observaciones" class="form-control">{{ asistencia.observaciones or '' }}</textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">💾 Guardar cambios</button>
+        <a href="{{ url_for('admin.reportes') }}" class="btn btn-secondary">↩️ Cancelar</a>
+    </form>
+</div>
+{% endblock %}

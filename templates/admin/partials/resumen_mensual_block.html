@@ -1,0 +1,41 @@
+<div class="d-flex justify-content-end gap-2 mb-3">
+    <a href="/admin/api/resumen-mensual/exportar?mes={{ mes }}" class="btn btn-outline-success btn-sm" target="_blank">📥 Exportar Excel</a>
+    <a href="/admin/api/resumen-mensual/exportar-pdf?mes={{ mes }}" class="btn btn-outline-danger btn-sm" target="_blank">📄 Exportar PDF</a>
+</div>
+
+
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        📆 Resumen mensual: {{ mes|capitalize }}
+    </div>
+    <div class="card-body p-0 table-responsive">
+        <div class="d-flex justify-content-between align-items-center p-3 pb-0">
+            <h5 class="mb-0">Mes actual: {{ mes }}</h5>
+            <input type="month" id="selector-mes" class="form-control" value="{{ mes }}">
+        </div>
+
+        <table class="table table-sm table-bordered table-striped align-middle text-center" style="font-size: 0.70rem;">
+
+            <thead class="table-light">
+                <tr>
+                    <th style="min-width: 200px;">Empleado</th>
+                    {% for d in dias %}
+                        <th style="min-width: 65px;">{{ d.day if d.day else d }}</th>
+                    {% endfor %}
+                    <th style="min-width: 90px;">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for usuario, dias_usuario in resumen.items() %}
+                <tr>
+                    <td class="text-start">{{ usuario.nombres }} {{ usuario.apellidos }}</td>
+                    {% for d in dias %}
+                        <td>{{ dias_usuario[d] or '-' }}</td>
+                    {% endfor %}
+                    <td><strong>{{ total_por_usuario[usuario] }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
