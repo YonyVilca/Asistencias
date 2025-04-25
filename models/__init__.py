@@ -1,4 +1,4 @@
-from app import db
+from extensions import db
 from .rol import Rol
 from .asistencia import Asistencia
 from .usuario import Usuario

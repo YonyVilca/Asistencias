@@ -1,4 +1,4 @@
-from app import db
+from extensions import db
 
 class IPAutorizada(db.Model):
     __tablename__ = 'ips_autorizadas'

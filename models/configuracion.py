@@ -1,4 +1,4 @@
-from app import db
+from extensions import db
 
 class Configuracion(db.Model):
     __tablename__ = 'configuraciones'

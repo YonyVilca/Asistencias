@@ -1,5 +1,5 @@
 # al inicio
-from app import db
+from extensions import db
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -17,7 +17,7 @@ class Usuario(UserMixin, db.Model):
     primer_inicio = db.Column(db.Boolean, default=True)
     eliminado = db.Column(db.Boolean, default=False)  # 🗑️ Eliminación lógica
     fecha_registro = db.Column(db.DateTime, server_default=db.func.now())
-
+    telegram_id = db.Column(db.String(100))  # 🔥 AGREGA ESTA LÍNEA
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 

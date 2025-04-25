@@ -6,10 +6,14 @@ from extensions import db
 from models.rol import Rol
 from models.asistencia import Asistencia
 from datetime import datetime
-from datetime import date, datetime, timedelta
+from datetime import datetime, date, time, timedelta
+from datetime import timedelta
+
 from models.horario import Horario
 from flask import jsonify, request
 from flask import Blueprint, render_template, render_template_string, request, redirect, flash, url_for, jsonify, send_file
+from models.asistencia import Asistencia
+from collections import defaultdict
 
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -197,103 +201,130 @@ def resumen_diario():
 @admin_bp.route('/api/resumen-diario/html')
 def resumen_diario_html():
     from models.asistencia import Asistencia
-    from models.horario import Horario
-    from datetime import date, datetime, timedelta
-
-    hoy = date.today()
-    asistencias = Asistencia.query.filter_by(fecha=hoy).all()
-
-    resumen = []
-    for a in asistencias:
-        usuario = a.usuario
-        horario = Horario.query.filter_by(usuario_id=usuario.id).first()
-        hora_inicio = horario.hora_inicio if horario else datetime.strptime("08:00", "%H:%M").time()
-        tolerancia = timedelta(minutes=10)
-
-        llego_tarde = False
-        if a.hora_entrada and datetime.combine(hoy, a.hora_entrada) > datetime.combine(hoy, hora_inicio) + tolerancia:
-            llego_tarde = True
-
-        tiempo_trabajado = "-"
-        if a.hora_entrada and a.hora_salida:
-            h_entrada = datetime.combine(hoy, a.hora_entrada)
-            h_salida = datetime.combine(hoy, a.hora_salida)
-            duracion = h_salida - h_entrada
-            total_min = int(duracion.total_seconds() // 60)
-            horas = total_min // 60
-            minutos = total_min % 60
-            tiempo_trabajado = f"{horas:02}:{minutos:02}"
-
-
-        resumen.append({
-            "usuario": f"{usuario.nombres} {usuario.apellidos}",
-            "entrada": a.hora_entrada.strftime('%H:%M') if a.hora_entrada else "-",
-            "salida": a.hora_salida.strftime('%H:%M') if a.hora_salida else "-",
-            "llego_tarde": llego_tarde,
-            "tiempo": tiempo_trabajado,
-            "observaciones": a.observaciones or "-"
-        })
-
-    return render_template('admin/partials/resumen_diario_block.html', resumen=resumen, hoy=hoy)
-@admin_bp.route('/api/resumen-mensual/html')
-def resumen_mensual_html():
-    from models.asistencia import Asistencia
-    from datetime import datetime, date, timedelta
+    from models.usuario import Usuario
+    from datetime import datetime, date, time, timedelta
     from collections import defaultdict
 
-    def formato_hhmm(td):
-        if not isinstance(td, timedelta):
-            return "-"
-        total_minutes = int(td.total_seconds() // 60)
-        horas = total_minutes // 60
-        minutos = total_minutes % 60
-        return f"{horas:02}:{minutos:02}"
+    hoy = date.today()
 
-    mes_str = request.args.get('mes')
-    try:
-        if mes_str:
-            primer_dia = datetime.strptime(mes_str, "%Y-%m").date()
-        else:
-            primer_dia = date.today().replace(day=1)
-    except ValueError:
-        return "Fecha inválida", 400
+    def calcular_pendientes_mensuales(usuario_id: int, desde: date, hasta: date):
+        asistencias = Asistencia.query.filter(
+            Asistencia.usuario_id == usuario_id,
+            Asistencia.fecha >= desde,
+            Asistencia.fecha <= hasta
+        ).order_by(Asistencia.fecha, Asistencia.hora_entrada).all()
 
-    # Calcular último día del mes
-    mes_siguiente = (primer_dia.replace(day=28) + timedelta(days=4)).replace(day=1)
-    ultimo_dia = mes_siguiente - timedelta(days=1)
-    dias_del_mes = [(primer_dia + timedelta(days=i)) for i in range((ultimo_dia - primer_dia).days + 1)]
+        bloques_por_dia = defaultdict(list)
+        for a in asistencias:
+            if a.hora_entrada and a.hora_salida:
+                entrada = datetime.combine(a.fecha, a.hora_entrada)
+                salida = datetime.combine(a.fecha, a.hora_salida)
+                bloques_por_dia[a.fecha].append((entrada, salida))
 
-    asistencias = Asistencia.query.filter(
-        Asistencia.fecha >= primer_dia,
-        Asistencia.fecha <= ultimo_dia
-    ).all()
+        total_trabajado = timedelta()
+        for fecha, bloques in bloques_por_dia.items():
+            tiempo_dia = sum((s - e for e, s in bloques), timedelta())
+            total_trabajado += tiempo_dia
 
-    resumen = defaultdict(lambda: defaultdict(str))
-    total_por_usuario = defaultdict(timedelta)
+        # ✅ Nuevo cálculo correcto del esperado
+        esperado = timedelta()
+        dia_actual = desde
+        while dia_actual <= hasta:
+            if dia_actual.weekday() in [0,1,2,3,4]:  # Lunes a Viernes
+                esperado += timedelta(hours=9)
+            elif dia_actual.weekday() == 5:  # Sábado
+                esperado += timedelta(hours=5)
+            dia_actual += timedelta(days=1)
+
+        diferencia = esperado - total_trabajado
+        diferencia_abs = abs(diferencia.total_seconds())
+        horas_pendientes = int(diferencia_abs // 3600)
+        minutos_pendientes = int((diferencia_abs % 3600) // 60)
+        saldo_signo = "+" if diferencia.total_seconds() > 0 else "-"
+
+        return horas_pendientes, minutos_pendientes, saldo_signo
+
+    # Configuración de jornada y tolerancia
+    hora_inicio = time(8, 0)
+    tolerancia_entrada = timedelta(minutes=10)
+
+    usuarios = Usuario.query.filter(Usuario.rol.has(nombre='empleado')).all()
+    asistencias = Asistencia.query.join(Usuario).filter(
+        Asistencia.fecha == hoy,
+        Usuario.rol.has(nombre='empleado')
+    ).order_by(Asistencia.usuario_id, Asistencia.hora_entrada).all()
+
+    registros = defaultdict(list)
+    estados = {}
 
     for a in asistencias:
-        if a.hora_entrada and a.hora_salida:
-            h_entrada = datetime.combine(a.fecha, a.hora_entrada)
-            h_salida = datetime.combine(a.fecha, a.hora_salida)
-            duracion = h_salida - h_entrada
-            resumen[a.usuario][a.fecha] = formato_hhmm(duracion)
-            total_por_usuario[a.usuario] += duracion
+        if a.hora_entrada:
+            registros[a.usuario_id].append(a)
+
+    for usuario in usuarios:
+        bloques = registros.get(usuario.id, [])
+        horas_pendientes, minutos_pendientes, saldo_signo = calcular_pendientes_mensuales(
+            usuario.id, hoy.replace(day=1), hoy
+        )
+
+        if not bloques:
+            estados[usuario] = {
+                "entrada": "-",
+                "salida": "-",
+                "observacion": "Ausente",
+                "total": "-",
+                "horas_pendientes": horas_pendientes,
+                "minutos_pendientes": minutos_pendientes,
+                "saldo_signo": saldo_signo,
+                "color": "danger"
+            }
+            continue
+
+        primera_entrada = min(b.hora_entrada for b in bloques if b.hora_entrada)
+        ultima_salida = max((b.hora_salida for b in bloques if b.hora_salida), default=None)
+
+        entrada_str = primera_entrada.strftime('%H:%M') if primera_entrada else "-"
+        salida_str = ultima_salida.strftime('%H:%M') if ultima_salida else "-"
+
+        jornada_completa = timedelta()
+        for b in bloques:
+            if b.hora_entrada and b.hora_salida:
+                entrada_dt = datetime.combine(hoy, b.hora_entrada)
+                salida_dt = datetime.combine(hoy, b.hora_salida)
+                jornada_completa += salida_dt - entrada_dt
+
+        total_horas = int(jornada_completa.total_seconds() // 3600)
+        total_minutos = int((jornada_completa.total_seconds() % 3600) // 60)
+        total_str = f"{total_horas:02}:{total_minutos:02}"
+
+        if primera_entrada > (datetime.combine(hoy, hora_inicio) + tolerancia_entrada).time():
+            observacion = "Tardanza"
+            color = "warning"
+        elif primera_entrada < hora_inicio:
+            observacion = "Temprano"
+            color = "success"
         else:
-            resumen[a.usuario][a.fecha] = "-"
+            observacion = "A tiempo"
+            color = "success"
 
-    # Redondear total en formato HH:MM
-    total_por_usuario_fmt = {u: formato_hhmm(t) for u, t in total_por_usuario.items()}
+        estados[usuario] = {
+            "entrada": entrada_str,
+            "salida": salida_str,
+            "observacion": observacion,
+            "total": total_str,
+            "horas_pendientes": horas_pendientes,
+            "minutos_pendientes": minutos_pendientes,
+            "saldo_signo": saldo_signo,
+            "color": color
+        }
 
-    return render_template('admin/partials/resumen_mensual_block.html',
-                           resumen=resumen,
-                           dias=dias_del_mes,
-                           total_por_usuario=total_por_usuario_fmt,
-                           mes=primer_dia.strftime('%Y-%m'))
+    # ✅ Aseguramos que el return exista siempre
+    return render_template("admin/partials/resumen_diario_block.html", estados=estados, hoy=hoy)
 
 @admin_bp.route('/api/por-usuario/html')
 def por_usuario_html():
     from models.usuario import Usuario
-    usuarios = Usuario.query.order_by(Usuario.nombres).all()
+    usuarios = Usuario.query.filter(Usuario.rol.has(nombre='empleado')).order_by(Usuario.nombres).all()
     current_month = datetime.today().strftime('%Y-%m')
     return render_template('admin/partials/por_usuario_block.html',
                            usuarios=usuarios,
@@ -377,196 +408,7 @@ def exportar_asistencias_excel():
     output.seek(0)
     filename = f"asistencias_{usuario.nombre_usuario}_{mes_str}.xlsx"
     return send_file(output, download_name=filename, as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-@admin_bp.route('/api/resumen-mensual/exportar')
-def exportar_resumen_excel():
-    import io
-    import pandas as pd
-    from flask import send_file
-    from datetime import datetime, timedelta
-    from collections import defaultdict
-    from models.asistencia import Asistencia
-    from models.usuario import Usuario
 
-    def formato_hhmm(td):
-        if not isinstance(td, timedelta):
-            return "-"
-        total_minutes = int(td.total_seconds() // 60)
-        horas = total_minutes // 60
-        minutos = total_minutes % 60
-        return f"{horas:02}:{minutos:02}"
-
-    mes_str = request.args.get('mes')
-    if not mes_str:
-        return "Mes requerido", 400
-
-    try:
-        primer_dia = datetime.strptime(mes_str, "%Y-%m").date()
-    except ValueError:
-        return "Formato de mes inválido", 400
-
-    mes_siguiente = (primer_dia.replace(day=28) + timedelta(days=4)).replace(day=1)
-    ultimo_dia = mes_siguiente - timedelta(days=1)
-    dias = [(primer_dia + timedelta(days=i)) for i in range((ultimo_dia - primer_dia).days + 1)]
-
-    asistencias = Asistencia.query.filter(
-        Asistencia.fecha >= primer_dia,
-        Asistencia.fecha <= ultimo_dia
-    ).order_by(Asistencia.usuario_id, Asistencia.fecha).all()
-
-    resumen = defaultdict(lambda: defaultdict(str))
-    total_por_usuario = defaultdict(timedelta)
-
-    for a in asistencias:
-        if a.hora_entrada and a.hora_salida:
-            h_entrada = datetime.combine(a.fecha, a.hora_entrada)
-            h_salida = datetime.combine(a.fecha, a.hora_salida)
-            duracion = h_salida - h_entrada
-            resumen[a.usuario][a.fecha] = formato_hhmm(duracion)
-            total_por_usuario[a.usuario] += duracion
-        else:
-            resumen[a.usuario][a.fecha] = "-"
-
-    # Construir DataFrame
-    columnas = [str(d.day) for d in dias]
-    data = []
-
-    for u in resumen:
-        fila = {
-            "Usuario": f"{u.nombres} {u.apellidos}",
-            **{str(d.day): resumen[u][d] for d in dias},
-            "Total": formato_hhmm(total_por_usuario[u])
-        }
-        data.append(fila)
-
-    df = pd.DataFrame(data)
-    output = io.BytesIO()
-
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Resumen Mensual')
-        workbook = writer.book
-        worksheet = writer.sheets['Resumen Mensual']
-
-        # 🧾 Formato personalizado
-        formato_pequeno = workbook.add_format({'font_size': 8, 'text_wrap': True})
-        worksheet.set_column(0, len(df.columns)-1, 12, formato_pequeno)
-
-    output.seek(0)
-    filename = f"resumen_mensual_{mes_str}.xlsx"
-    return send_file(output, download_name=filename, as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-@admin_bp.route('/api/resumen-mensual/exportar-pdf')
-def exportar_resumen_pdf():
-    from flask import render_template_string
-    from weasyprint import HTML
-    import io
-    from datetime import datetime, timedelta
-    from collections import defaultdict
-    from models.asistencia import Asistencia
-
-    def formato_hhmm(td):
-        if not isinstance(td, timedelta):
-            return "-"
-        total_minutes = int(td.total_seconds() // 60)
-        horas = total_minutes // 60
-        minutos = total_minutes % 60
-        return f"{horas:02}:{minutos:02}"
-
-    mes_str = request.args.get('mes')
-    try:
-        primer_dia = datetime.strptime(mes_str, "%Y-%m").date()
-    except:
-        return "Mes inválido", 400
-
-    mes_siguiente = (primer_dia.replace(day=28) + timedelta(days=4)).replace(day=1)
-    ultimo_dia = mes_siguiente - timedelta(days=1)
-    dias = [(primer_dia + timedelta(days=i)) for i in range((ultimo_dia - primer_dia).days + 1)]
-
-    asistencias = Asistencia.query.filter(
-        Asistencia.fecha >= primer_dia,
-        Asistencia.fecha <= ultimo_dia
-    ).order_by(Asistencia.usuario_id, Asistencia.fecha).all()
-
-    resumen = defaultdict(lambda: defaultdict(str))
-    total_por_usuario = defaultdict(timedelta)
-
-    for a in asistencias:
-        if a.hora_entrada and a.hora_salida:
-            h_entrada = datetime.combine(a.fecha, a.hora_entrada)
-            h_salida = datetime.combine(a.fecha, a.hora_salida)
-            duracion = h_salida - h_entrada
-            resumen[a.usuario][str(a.fecha.day)] = formato_hhmm(duracion)
-            total_por_usuario[a.usuario] += duracion
-        else:
-            resumen[a.usuario][str(a.fecha.day)] = "-"
-
-    total_por_usuario_fmt = {u: formato_hhmm(t) for u, t in total_por_usuario.items()}
-    dias_numeros = [str(d.day) for d in dias]
-
-    html = render_template_string("""
-    <html>
-    <head>
-<style>
-    @page {
-        size: A4 landscape;
-        margin: 30px;
-    }
-    body {
-        font-family: sans-serif;
-        font-size: 6pt;
-        margin: 30px;
-    }
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 6pt;
-    }
-    th, td {
-        border: 1px solid #333;
-        padding: 2px;
-        text-align: center;
-    }
-    th:first-child, td:first-child {
-        text-align: left;
-    }
-    th {
-        background-color: #f0f0f0;
-    }
-</style>
-
-    </head>
-    <body>
-    <h3>Resumen Mensual - {{ mes }}</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Usuario</th>
-                {% for dia in dias %}
-                <th>{{ dia }}</th>
-                {% endfor %}
-                <th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for u, dias_u in resumen.items() %}
-            <tr>
-                <td>{{ u.nombres }} {{ u.apellidos }}</td>
-                {% for d in dias %}
-                <td>{{ dias_u.get(d, "-") }}</td>
-                {% endfor %}
-                <td>{{ total_por_usuario[u] }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    </body>
-    </html>
-    """, resumen=resumen, total_por_usuario=total_por_usuario_fmt, dias=dias_numeros, mes=mes_str)
-
-    pdf_io = io.BytesIO()
-    HTML(string=html).write_pdf(pdf_io, stylesheets=[], presentational_hints=True)
-    pdf_io.seek(0)
-
-    return send_file(pdf_io, download_name=f"resumen_mensual_{mes_str}.pdf", as_attachment=True)
 @admin_bp.route('/asistencias/editar/<int:asistencia_id>', methods=['GET', 'POST'])
 def editar_asistencia(asistencia_id):
     asistencia = Asistencia.query.get_or_404(asistencia_id)
@@ -597,3 +439,194 @@ def eliminar_usuario(usuario_id):
     db.session.commit()
     flash("🗑️ Usuario eliminado lógicamente.", "info")
     return redirect(url_for('admin.listar_usuarios'))
+@admin_bp.route('/api/resumen-semanal/html')
+def resumen_semanal_html():
+    from datetime import datetime, timedelta
+    from models.asistencia import Asistencia
+    from models.usuario import Usuario
+    from collections import defaultdict
+
+    def formato_hhmm(td):
+        total_minutes = int(td.total_seconds() // 60)
+        horas = total_minutes // 60
+        minutos = total_minutes % 60
+        return f"{horas:02}:{minutos:02}"
+
+    def obtener_rango_semana(mes_str, semana_idx):
+        primer_dia_mes = datetime.strptime(mes_str, "%Y-%m").date()
+
+        # Avanzar hasta el primer lunes del mes o anterior
+        dia_inicio = primer_dia_mes
+        while dia_inicio.weekday() != 0:
+            dia_inicio -= timedelta(days=1)
+
+        dia_inicio += timedelta(weeks=semana_idx - 1)
+        dia_fin = dia_inicio + timedelta(days=5)  # Lunes a Sábado
+
+        # ✅ Solo días dentro del mes solicitado
+        dias_validos = [
+            dia for dia in (dia_inicio + timedelta(days=i) for i in range(6))
+            if dia.month == primer_dia_mes.month
+        ]
+        return dias_validos
+
+    mes_str = request.args.get("mes", datetime.today().strftime("%Y-%m"))
+    semana = int(request.args.get("semana", 1))
+    dias_semana = obtener_rango_semana(mes_str, semana)
+
+    usuarios = Usuario.query.filter(Usuario.rol.has(nombre='empleado')).all()
+    asistencias = Asistencia.query.filter(
+        Asistencia.fecha.in_(dias_semana)
+    ).order_by(Asistencia.usuario_id, Asistencia.fecha).all()
+
+    resumen = defaultdict(lambda: defaultdict(timedelta))
+    total_por_usuario = defaultdict(timedelta)
+    esperado_por_usuario = {}
+    diferencia_por_usuario = {}
+
+    for a in asistencias:
+        if a.hora_entrada and a.hora_salida:
+            entrada = datetime.combine(a.fecha, a.hora_entrada)
+            salida = datetime.combine(a.fecha, a.hora_salida)
+            duracion = salida - entrada
+            resumen[a.usuario][a.fecha] += duracion
+            total_por_usuario[a.usuario] += duracion
+
+    for u in usuarios:
+        esperado = timedelta()
+        for dia in dias_semana:
+            if dia.weekday() == 5:  # Sábado
+                esperado += timedelta(hours=5)
+            else:
+                esperado += timedelta(hours=9)
+        trabajado = total_por_usuario.get(u, timedelta())
+        diferencia = trabajado - esperado
+
+        esperado_por_usuario[u] = formato_hhmm(esperado)
+        diferencia_por_usuario[u] = (
+            f"{'-' if diferencia.total_seconds() < 0 else '+'}{formato_hhmm(abs(diferencia))}"
+        )
+
+    resumen_fmt = {
+        usuario: {
+            dia: formato_hhmm(resumen[usuario][dia]) if dia in resumen[usuario] else "-"
+            for dia in dias_semana
+        }
+        for usuario in usuarios
+    }
+
+    total_fmt = {u: formato_hhmm(t) for u, t in total_por_usuario.items()}
+
+    return render_template(
+        "admin/partials/resumen_semanal_block.html",
+        resumen=resumen_fmt,
+        total_por_usuario=total_fmt,
+        esperado_por_usuario=esperado_por_usuario,  # ✅ corregido
+        diferencia_por_usuario=diferencia_por_usuario,  # ✅ corregido
+        dias=dias_semana,
+        semana=semana,
+        mes=mes_str,
+        hoy=datetime.today().date(),
+        timedelta=timedelta
+    )
+@admin_bp.route('/api/exportar-reporte-mensual')
+def exportar_reporte_mensual():
+    import io
+    import pandas as pd
+    from flask import send_file
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+    from models.asistencia import Asistencia
+    from models.usuario import Usuario
+
+    def formato_hhmm(td):
+        total_minutes = int(td.total_seconds() // 60)
+        horas = total_minutes // 60
+        minutos = total_minutes % 60
+        return f"{horas:02}:{minutos:02}"
+
+    mes_str = request.args.get('mes')
+    if not mes_str:
+        return "Mes requerido", 400
+
+    try:
+        primer_dia = datetime.strptime(mes_str, "%Y-%m").date()
+    except ValueError:
+        return "Formato de mes inválido", 400
+
+    mes_siguiente = (primer_dia.replace(day=28) + timedelta(days=4)).replace(day=1)
+    ultimo_dia = mes_siguiente - timedelta(days=1)
+    dias_del_mes = [(primer_dia + timedelta(days=i)) for i in range((ultimo_dia - primer_dia).days + 1)]
+
+    usuarios = Usuario.query.filter(Usuario.rol.has(nombre='empleado')).all()
+    asistencias = Asistencia.query.filter(
+        Asistencia.fecha >= primer_dia,
+        Asistencia.fecha <= ultimo_dia
+    ).order_by(Asistencia.usuario_id, Asistencia.fecha, Asistencia.hora_entrada).all()
+
+    resumen = defaultdict(lambda: {
+        'trabajadas': timedelta(),
+        'esperadas': timedelta(),
+        'tardanzas': 0,
+        'faltas': 0
+    })
+
+    registros = defaultdict(list)
+    for a in asistencias:
+        registros[a.usuario_id].append(a)
+
+    for usuario in usuarios:
+        for dia in dias_del_mes:
+            dia_asistencias = [a for a in registros[usuario.id] if a.fecha == dia]
+
+            esperado = timedelta(hours=9) if dia.weekday() < 5 else (timedelta(hours=5) if dia.weekday() == 5 else timedelta())
+            resumen[usuario]['esperadas'] += esperado
+
+            if not dia_asistencias:
+                if dia.weekday() < 6:  # lunes a sábado
+                    resumen[usuario]['faltas'] += 1
+                continue
+
+            bloques = []
+            for a in dia_asistencias:
+                if a.hora_entrada and a.hora_salida:
+                    entrada = datetime.combine(a.fecha, a.hora_entrada)
+                    salida = datetime.combine(a.fecha, a.hora_salida)
+                    bloques.append((entrada, salida))
+
+            if bloques:
+                total_dia = sum((s - e for e, s in bloques), timedelta())
+                resumen[usuario]['trabajadas'] += total_dia
+
+                primera_entrada = min(e.time() for e, _ in bloques)
+                if primera_entrada > time(8, 10):  # tardanza después de 8:10
+                    resumen[usuario]['tardanzas'] += 1
+
+    data = []
+    for usuario, info in resumen.items():
+        trabajadas = info['trabajadas']
+        esperadas = info['esperadas']
+        diferencia = trabajadas - esperadas
+
+        data.append({
+            "Usuario": f"{usuario.nombres} {usuario.apellidos}",
+            "Horas Trabajadas": formato_hhmm(trabajadas),
+            "Horas Esperadas": formato_hhmm(esperadas),
+            "Diferencia": ("-" if diferencia.total_seconds() < 0 else "+") + formato_hhmm(abs(diferencia)),
+            "Tardanzas": info['tardanzas'],
+            "Faltas": info['faltas']
+        })
+
+    df = pd.DataFrame(data)
+    output = io.BytesIO()
+
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Reporte Mensual')
+        workbook = writer.book
+        worksheet = writer.sheets['Reporte Mensual']
+        formato_pequeno = workbook.add_format({'font_size': 10, 'text_wrap': True})
+        worksheet.set_column(0, len(df.columns)-1, 20, formato_pequeno)
+
+    output.seek(0)
+    filename = f"reporte_mensual_{mes_str}.xlsx"
+    return send_file(output, download_name=filename, as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

@@ -1,0 +1,91 @@
+<div class="card mt-4">
+    <div class="card-body">
+        <h5 class="card-title">
+            📅 Resumen Semanal - Semana {{ semana }} de {{ mes }}
+            {% if dias %}
+                ({{ dias[0].strftime('%d/%m') }} al {{ dias[-1].strftime('%d/%m') }})
+            {% endif %}
+        </h5>
+
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label for="selector-mes" class="form-label">Mes</label>
+                <select id="selector-mes" class="form-select">
+                    {% for month in range(1, 13) %}
+                        {% set mes_iterado = "%04d-%02d"|format(hoy.year, month) %}
+                        <option value="{{ mes_iterado }}" {% if mes_iterado == mes %}selected{% endif %}>
+                            {{ mes_iterado }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label for="selector-semana" class="form-label">Semana</label>
+                <select id="selector-semana" class="form-select">
+                    {% for i in range(1, 6) %}
+                        <option value="{{ i }}" {% if i == semana %}selected{% endif %}>Semana {{ i }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4 d-flex align-items-end">
+                <a id="boton-exportar" href="/admin/api/exportar-reporte-mensual?mes={{ mes }}" class="btn btn-success w-100" target="_blank">
+                    📥 Exportar Reporte Mensual (.xlsx)
+                </a>
+            </div>
+        </div>
+
+        {% if dias %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm text-center align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>👤 Usuario</th>
+                        {% for d in dias %}
+                            <th>{{ d.strftime('%a %d/%m') }}</th>
+                        {% endfor %}
+                        <th>⏱ Total</th>
+                        <th>📌 Esperado</th>
+                        <th>📉 Diferencia</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for usuario, dias_u in resumen.items() %}
+                    <tr>
+                        <td class="text-start">{{ usuario.nombres }} {{ usuario.apellidos }}</td>
+                        {% for d in dias %}
+                            <td>{{ dias_u[d] }}</td>
+                        {% endfor %}
+                        <td><strong>{{ total_por_usuario[usuario] }}</strong></td>
+                        <td class="text-primary">{{ esperado_por_usuario[usuario] }}</td>
+                        <td class="fw-bold {% if diferencia_por_usuario[usuario].startswith('-') %}text-danger{% else %}text-success{% endif %}">
+                            {{ diferencia_por_usuario[usuario] }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="alert alert-warning text-center mt-4">
+                ⚠️ No hay días disponibles para mostrar en esta semana.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Actualizar dinámicamente el enlace de exportación cuando cambia el mes
+document.addEventListener("DOMContentLoaded", function() {
+    const selectorMes = document.getElementById('selector-mes');
+    const botonExportar = document.getElementById('boton-exportar');
+
+    if (selectorMes && botonExportar) {
+        selectorMes.addEventListener('change', function() {
+            const mesSeleccionado = this.value;
+            botonExportar.href = `/admin/api/exportar-reporte-mensual?mes=${mesSeleccionado}`;
+        });
+    }
+});
+</script>

@@ -1,46 +1,25 @@
-<div class="card shadow-sm">
-    <div class="card-header bg-primary text-white">
-        📅 Resumen del día {{ hoy.strftime('%d/%m/%Y') }}
-    </div>
-    <div class="card-body p-0">
-        {% if resumen %}
-        <div class="table-responsive">
-            <table class="table table-sm table-bordered table-striped align-middle text-center" style="font-size: 0.85rem;">
-
-                <thead class="table-light">
-                    <tr>
-                        <th>Empleado</th>
-                        <th>Entrada</th>
-                        <th>Salida</th>
-                        <th>Llegó tarde</th>
-                        <th>Horas trabajadas</th>
-                        <th>Observaciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in resumen %}
-                    <tr>
-                        <td>{{ r.usuario }}</td>
-                        <td>{{ r.entrada }}</td>
-                        <td>{{ r.salida }}</td>
-                        <td>
-                            <span class="badge {{ 'bg-danger' if r.llego_tarde else 'bg-success' }}">
-                                {{ 'Sí' if r.llego_tarde else 'No' }}
-                            </span>
-                        </td>
-                        <td>{{ r.tiempo }}</td>
-                        <td>
-                            {% if r.observaciones and r.observaciones != '-' %}
-                                {{ r.observaciones }}
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-            <div class="p-3 text-muted text-center">No hay asistencias registradas hoy.</div>
-        {% endif %}
-    </div>
-</div>
+<table class="table table-sm table-bordered table-hover text-center align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>👤 Usuario</th>
+        <th>📝 Observación</th>
+        <th>⏰ Hora Entrada</th>
+        <th>🚪 Hora Salida</th>
+        <th>⏱ Total trabajado</th>
+        <th>🕳 Pendiente</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for usuario, info in estados.items() %}
+      <tr class="table-{{ info.color }}">
+        <td class="text-start">{{ usuario.nombres }} {{ usuario.apellidos }}</td>
+        <td>{{ info.observacion }}</td>
+        <td>{{ info.entrada or '-' }}</td>
+        <td>{{ info.salida or '-' }}</td>
+        <td>{{ info.total or '-' }}</td>
+        <td>{{ info.saldo_signo }}{{ "%02d" | format(info.horas_pendientes) }}:{{ "%02d" | format(info.minutos_pendientes) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  

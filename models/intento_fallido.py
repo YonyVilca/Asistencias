@@ -1,4 +1,4 @@
-from app import db
+from extensions import db
 
 class IntentoFallido(db.Model):
     __tablename__ = 'intentos_fallidos'

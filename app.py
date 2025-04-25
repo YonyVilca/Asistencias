@@ -2,6 +2,7 @@ from flask import Flask
 from config import Config
 from extensions import db, login_manager
 from datetime import datetime, timedelta
+from routes.qr import qr_bp
 
 def todatetime(t):
     return datetime.combine(datetime.today(), t) if t else None
@@ -28,10 +29,12 @@ def create_app():
     from routes.auth import auth_bp
     from routes.asistencia import asistencia_bp
     from routes.admin import admin_bp
+    from routes.qr import qr_bp  # 👈 Importas aquí
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(asistencia_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(qr_bp)  # 👈 Lo registras aquí
 
     # Filtros Jinja personalizados
     app.jinja_env.filters['todatetime'] = todatetime
@@ -50,6 +53,7 @@ def create_app():
         db.session.commit()
 
     return app
+
 
 # Ejecutar en modo desarrollo
 if __name__ == "__main__":

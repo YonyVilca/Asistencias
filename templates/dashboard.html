@@ -5,70 +5,138 @@
 <div class="container mt-4">
     <h3 class="mb-3">👤 Bienvenido, {{ usuario.nombres }}</h3>
 
-    <!-- ✅ Alerta bienvenida si tiene IP autorizada -->
     {% if mensaje_bienvenida %}
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        👋 Hola {{ usuario.nombres }}.
-        {% if mensaje_bienvenida.entrada %}
-            Registraste tu entrada a las <strong>{{ mensaje_bienvenida.entrada }}</strong>.
-        {% else %}
-            Puedes registrar tu entrada ahora.
-        {% endif %}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <div class="alert alert-info shadow-sm rounded-3 px-4 py-3 d-flex align-items-center justify-content-between gap-2" role="alert">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-calendar-check-fill fs-4 text-primary"></i>
+            <div>
+                👋 Hola <strong>{{ usuario.nombres }}</strong>.
+                {% if mensaje_bienvenida.entrada %}
+                    Registraste tu entrada a las <strong>{{ mensaje_bienvenida.entrada }}</strong>.
+                {% else %}
+                    Puedes registrar tu entrada ahora.
+                {% endif %}
+            </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
     </div>
     {% endif %}
 
-    <!-- Botones de marcación -->
-    <div class="mb-4 d-flex gap-3">
-        {% if not asistencia %}
-            <!-- Si aún no hay registro del día -->
-            <form method="POST" action="{{ url_for('asistencia.marcar') }}">
-                <input type="hidden" name="accion" value="entrada">
-                <button type="submit" class="btn btn-success btn-lg">🟢 Marcar Entrada</button>
-            </form>
-        {% elif not asistencia.hora_salida %}
-            <!-- Ya marcó entrada pero no salida -->
-            <form method="POST" action="{{ url_for('asistencia.marcar') }}">
-                <input type="hidden" name="accion" value="salida">
-                <button type="submit" class="btn btn-danger btn-lg">🔴 Marcar Salida</button>
-            </form>
-        {% else %}
-            <!-- Ya marcó entrada y salida -->
-            <div class="alert alert-info mb-0">✅ Ya registraste tu entrada y salida hoy.</div>
-        {% endif %}
+    {% if not usuario.telegram_id %}
+    <div class="alert alert-warning mt-4 shadow-sm rounded">
+        <h5>🔐 Vincula tu cuenta con Telegram</h5>
+        <p>Envía este comando al bot de Telegram:</p>
+        <div class="bg-light rounded px-3 py-2 border text-center mb-2 fs-5">
+            <code>/vincular {{ token_vinculacion }}</code>
+        </div>
+        <p class="text-muted small mb-0">
+            Este código expira en 10 minutos.
+        </p>
+    </div>
+    {% endif %}
+
+    {% if usuario.telegram_id %}
+    <form action="{{ url_for('asistencia.desvincular_telegram') }}" method="post" class="mt-4 text-end">
+        <button type="submit" class="btn btn-outline-danger btn-sm">
+            🔄 Desvincular cuenta de Telegram
+        </button>
+    </form>
+    {% endif %}
+
+    <!-- 📲 QR de asistencia -->
+    <div class="mb-4 mt-4">
+        <h5>📲 Escanea este código QR desde tu celular</h5>
+        <div class="d-flex justify-content-center">
+            <img src="{{ url_for('qr.generar_qr') }}" alt="Código QR de asistencia" style="width: 200px; height: 200px;" class="shadow rounded">
+        </div>
+        <div class="text-center mt-2">
+            <p class="text-muted mb-1">
+                Escanea, copia y pega en el bot de Telegram.
+            </p>
+            <p class="text-muted small">
+                Este código expirará en <span id="qr-timer">120</span> segundos.
+            </p>
+        </div>
     </div>
 
-    <!-- Tabla: asistencia del día -->
+    <!-- 📅 Tabla de asistencias -->
     <h5>📅 Asistencia del día</h5>
-    {% if asistencia %}
+    {% if asistencias %}
     <div class="table-responsive">
-        <table class="table table-sm table-bordered align-middle text-center">
-            <thead class="table-light">
+        <table class="table table-bordered border-secondary shadow-sm align-middle text-center table-hover rounded">
+            <thead class="table-primary text-dark fw-semibold">
                 <tr>
-                    <th>Fecha</th>
+                    <th>#</th>
                     <th>Entrada</th>
                     <th>Salida</th>
-                    <th>Tiempo trabajado</th>
+                    <th>Tiempo</th>
+                    <th>Observaciones</th>
                 </tr>
             </thead>
             <tbody>
+                {% for a in asistencias %}
                 <tr>
-                    <td>{{ asistencia.fecha }}</td>
-                    <td>{{ asistencia.hora_entrada.strftime('%H:%M') if asistencia.hora_entrada else '-' }}</td>
-                    <td>{{ asistencia.hora_salida.strftime('%H:%M') if asistencia.hora_salida else '-' }}</td>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ a.hora_entrada.strftime('%H:%M') if a.hora_entrada else '-' }}</td>
+                    <td>{{ a.hora_salida.strftime('%H:%M') if a.hora_salida else '-' }}</td>
                     <td>
-                        {% if asistencia.hora_entrada and asistencia.hora_salida %}
-                            {{ ((asistencia.hora_salida | todatetime) - (asistencia.hora_entrada | todatetime)) | horas_minutos }}
+                        {% if a.hora_entrada and a.hora_salida %}
+                            {% set diff = (datetime.combine(a.fecha, a.hora_salida) - datetime.combine(a.fecha, a.hora_entrada)).total_seconds() %}
+                            {{ diff // 3600 }}:{{ '%02d' % ((diff % 3600) // 60) }}
                         {% else %}
                             -
                         {% endif %}
                     </td>
+                    <td>{{ a.observaciones or '-' }}</td>
                 </tr>
+                {% endfor %}
             </tbody>
         </table>
+    </div>
+
+    <!-- 📦 Totales -->
+    <div class="row text-center mt-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm border-primary">
+                <div class="card-body">
+                    <h6>⏱ Total del día</h6>
+                    <h4 class="text-primary">{{ '%02d' % horas }}:{{ '%02d' % minutos }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm border-danger">
+                <div class="card-body">
+                    <h6>🧾 Horas pendientes del mes</h6>
+                    <h4 class="{{ 'text-danger' if saldo_signo == '+' else 'text-success' }}">
+                        {{ saldo_signo }}{{ '%02d' % horas_pendientes }}:{{ '%02d' % minutos_pendientes }}
+                    </h4>
+                </div>
+            </div>
+        </div>
     </div>
     {% else %}
         <p class="text-muted">Aún no has registrado tu asistencia hoy.</p>
     {% endif %}
 </div>
+
+<!-- 🔁 QR Auto-refresh -->
+<script>
+    let tiempoQR = 120;
+    const qrTimer = document.getElementById("qr-timer");
+    const qrImg = document.querySelector('img[alt="Código QR de asistencia"]');
+
+    function actualizarQR() {
+        qrImg.src = '{{ url_for("qr.generar_qr") }}' + '?_=' + new Date().getTime();
+        tiempoQR = 120;
+    }
+
+    setInterval(() => {
+        tiempoQR--;
+        qrTimer.textContent = tiempoQR;
+        if (tiempoQR <= 0) {
+            actualizarQR();
+        }
+    }, 1000);
+</script>
 {% endblock %}

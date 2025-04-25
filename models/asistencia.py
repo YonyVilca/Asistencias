@@ -1,4 +1,4 @@
-from app import db
+from extensions import db
 
 
 class Asistencia(db.Model):
@@ -12,3 +12,4 @@ class Asistencia(db.Model):
     ip = db.Column(db.String(50))
     observaciones = db.Column(db.Text)
     creado_en = db.Column(db.DateTime, server_default=db.func.now())
+
