@@ -140,7 +140,7 @@ def marcar():
         flash("⛔ No está autorizado para marcar asistencia.", "danger")
         return redirect(url_for('asistencia.dashboard'))
 
-    hora_minima_entrada = time(7, 55)
+    hora_minima_entrada = time(5, 0)
     hora_inicio = time(8, 0)
     tolerancia_entrada = timedelta(minutes=10)
     hora_fin_laboral = time(18, 0)

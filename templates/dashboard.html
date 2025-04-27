@@ -30,7 +30,7 @@
             <code>/vincular {{ token_vinculacion }}</code>
         </div>
         <p class="text-muted small mb-0">
-            Este código expira en 10 minutos.
+            Este código expira en <span id="vinculacion-timer">600</span> segundos.
         </p>
     </div>
     {% endif %}
@@ -120,10 +120,12 @@
     {% endif %}
 </div>
 
-<!-- 🔁 QR Auto-refresh -->
+<!-- 🔁 QR y Vinculación Timer Auto-refresh -->
 <script>
     let tiempoQR = 120;
+    let tiempoVinculacion = 600;
     const qrTimer = document.getElementById("qr-timer");
+    const vinculoTimer = document.getElementById("vinculacion-timer");
     const qrImg = document.querySelector('img[alt="Código QR de asistencia"]');
 
     function actualizarQR() {
@@ -137,6 +139,11 @@
         if (tiempoQR <= 0) {
             actualizarQR();
         }
+    }, 1000);
+
+    setInterval(() => {
+        tiempoVinculacion--;
+        vinculoTimer.textContent = tiempoVinculacion;
     }, 1000);
 </script>
 {% endblock %}
